@@ -1,5 +1,7 @@
 import net from "net";
 import axios, { AxiosRequestConfig } from "axios";
+import { TextProcessor } from "./TextProcessor";
+import { text } from "stream/consumers";
 
 // Store clients using a Map (key: clientId, value: socket)
 const clients = new Map();
@@ -76,6 +78,8 @@ async function callLLM(prompt = "", responseStream) {
     responseType: "stream",
   };
 
+  const textProcessor = new TextProcessor();
+
   try {
     const llmStream = (await axios(options)).data;
 
@@ -90,13 +94,15 @@ async function callLLM(prompt = "", responseStream) {
 
           const deltaText = deltaJSON?.response;
 
-          deltaText &&
-            deltaText !== "" &&
-            responseStream.write(deltaText.toString().toLowerCase());
+          if (deltaText && deltaText !== "") {
+            textProcessor.addText(deltaText);
 
-          //console.log(deltaText)
-
-          //socket.write("delta")
+            if (textProcessor.pages.length === 1) {
+              responseStream.write(
+                textProcessor.flipCase(deltaText.toString())
+              );
+            }
+          }
         } catch (e) {
           console.log(e);
         }
