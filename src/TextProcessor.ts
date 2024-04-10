@@ -15,81 +15,117 @@ export class TextProcessor {
   public readonly maxLinesPerPage;
   public readonly maxCharsPerLine;
 
+  private _currentLine = "";
+  private _currentPage: string[] = [];
+
+  private _lastDelta = "";
+
   constructor(maxLinesPerPage = 24, maxCharsPerLine = 40) {
     this.maxLinesPerPage = maxLinesPerPage;
     this.maxCharsPerLine = maxCharsPerLine;
   }
 
-  public addText(text: string): void {
+  public moveCurrentLineToCurrentPage(): boolean {
+    let pageOverflow = false;
+
+    if (this._currentPage.length < this.maxLinesPerPage) {
+      this._currentPage.push(this._currentLine);
+    } else {
+      this.pages.push(this._currentPage);
+      this._currentPage = [];
+      this._currentPage.push(this._currentLine);
+      pageOverflow = true;
+    }
+
+    this._lastDelta += "\n";
+
+    this._currentLine = "";
+
+    return pageOverflow;
+  }
+
+  public truncateWordsExceedingLineLength(words: string[]): string[] {
+    const splitWords: string[] = [];
+
+    for (let word of words) {
+      while (word.length > this.maxCharsPerLine) {
+        const splitWord = word.slice(0, this.maxCharsPerLine);
+        word = word.slice(this.maxCharsPerLine);
+        splitWords.push(splitWord);
+      }
+      word.length && splitWords.push(word);
+    }
+
+    return splitWords;
+  }
+
+  public addWordToCurrentLine(word: string): boolean {
+    let lineOverflow = false;
+
+    if (this._currentLine.length + word.length + 1 < this.maxCharsPerLine) {
+      this._lastDelta += this._currentLine.length ? ` ${word}` : word;
+      this._currentLine += this._currentLine.length ? ` ${word}` : word;
+    } else {
+      lineOverflow = true;
+      this.moveCurrentLineToCurrentPage();
+      this._currentLine = word;
+
+      this._lastDelta += word;
+    }
+
+    return lineOverflow;
+  }
+
+  public addText(text: string): string {
+    this._lastDelta = "";
+
     const incomingLines = text.split("\n");
 
-    let currentPage = this.pages.length
-      ? this.pages[this.pages.length - 1]
-      : [];
-
-    let currentLine = currentPage.length
-      ? currentPage[currentPage.length - 1]
-      : "";
-
-    // for (const line of incomingLines) {
     for (let j = 0; j < incomingLines.length; j++) {
       const line = incomingLines[j];
 
+      const lastLineOfIncomingText = j === incomingLines.length - 1;
+
+      // Empty line indicates a new paragraph
+      if (line.length === 0 && !lastLineOfIncomingText) {
+        this.moveCurrentLineToCurrentPage();
+        continue;
+      }
+
       const words = line.split(" ");
 
-      const splitWords: string[] = [];
-
-      for (let word of words) {
-        while (word.length > this.maxCharsPerLine) {
-          const splitWord = word.slice(0, this.maxCharsPerLine);
-          word = word.slice(this.maxCharsPerLine);
-          splitWords.push(splitWord);
-        }
-        word.length && splitWords.push(word);
-      }
+      const splitWords = this.truncateWordsExceedingLineLength(words);
 
       for (let i = 0; i < splitWords.length; i++) {
         const word = splitWords[i];
 
-        let lineOverflow = false;
+        const lineOverflow = this.addWordToCurrentLine(word);
 
-        if (currentLine.length + word.length + 1 < this.maxCharsPerLine) {
-          currentLine += currentLine.length ? ` ${word}` : word;
-        } else {
-          lineOverflow = true;
-        }
+        const lastWordOfIncomingLine = i === splitWords.length - 1;
 
-        if (
-          lineOverflow ||
-          i === splitWords.length - 1 //Last word iof incoming  line
-        ) {
-          const lastWordOfIncomingLine = i === splitWords.length - 1;
-
-          const lastWordAtAll =
-            j === incomingLines.length - 1 && lastWordOfIncomingLine;
-
-          let pageOverflow = false;
-
-          if (currentPage.length < this.maxLinesPerPage) {
-            if (lineOverflow && !lastWordOfIncomingLine && !lastWordAtAll) {
-              currentPage.push(currentLine);
-              lineOverflow && (currentLine = word);
-            } else {
-              currentPage.push(currentLine);
-              currentLine = "";
-            }
-          } else {
-            pageOverflow = true;
-          }
-
-          if (pageOverflow || lastWordAtAll) {
-            this.pages.push(currentPage);
-            currentPage = [];
-            currentPage.push(currentLine);
-          }
+        // Each line is a paragraph except the last line of the incoming text.
+        if (lastWordOfIncomingLine && !lastLineOfIncomingText) {
+          this.moveCurrentLineToCurrentPage();
         }
       }
     }
+
+    return this._lastDelta;
+  }
+
+  public getCurrentPage() {
+    // Add the current line to a copy of the current page
+
+    const currentPage = this._currentPage.slice();
+    currentPage.push(this._currentLine);
+
+    return currentPage;
+  }
+
+  public getPages() {
+    const result = this.pages.concat([this.getCurrentPage()]);
+
+    return result;
   }
 
   // Method to flip uppercase to lowercase and vice versa for each character in a string
