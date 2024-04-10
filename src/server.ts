@@ -1,7 +1,7 @@
 import net from "net";
 import axios, { AxiosRequestConfig } from "axios";
 import { TextProcessor } from "./TextProcessor";
-import { text } from "stream/consumers";
+let llmResponseText = ""
 
 // Store clients using a Map (key: clientId, value: socket)
 const clients = new Map();
@@ -24,6 +24,8 @@ const server = net.createServer((socket) => {
   // Send greeting message to the new client
   socket.write("hELLO cLIENT");
 
+  socket.write(Buffer.from([13, 13]))
+
   // Handle incoming data from clients
   socket.on("data", (data) => {
     console.log(`Data from ${clientId}: ${data}`);
@@ -42,7 +44,7 @@ const server = net.createServer((socket) => {
       if (data[i] !== 13) {
         try {
           userInput += data.toString("ascii", i, i + 1);
-        } catch {}
+        } catch { }
       } else {
         console.log(`${userInput}`);
 
@@ -78,7 +80,7 @@ async function callLLM(prompt = "", responseStream) {
     responseType: "stream",
   };
 
-  const textProcessor = new TextProcessor();
+  llmResponseText = ""
 
   try {
     const llmStream = (await axios(options)).data;
@@ -90,16 +92,24 @@ async function callLLM(prompt = "", responseStream) {
         //console.log(lin)
 
         try {
+          if (lin === "") {
+            continue
+          }
+
           const deltaJSON = JSON.parse(lin);
 
           const deltaText = deltaJSON?.response;
 
           if (deltaText && deltaText !== "") {
-            textProcessor.addText(deltaText);
+
+            llmResponseText += deltaText
+
+            const textProcessor = new TextProcessor();
+            textProcessor.addText(llmResponseText);
 
             if (textProcessor.pages.length === 1) {
               responseStream.write(
-                textProcessor.flipCase(deltaText.toString())
+                convertStringToByteArray(textProcessor.flipCase(deltaText.toString()))
               );
             }
           }
@@ -108,9 +118,14 @@ async function callLLM(prompt = "", responseStream) {
         }
       }
     });
+
+    llmStream.on("close", () => { console.log(llmResponseText) })
+
   } catch (e) {
     console.log(e);
   }
+
+
 }
 
 // Listen on port 6400
@@ -122,3 +137,14 @@ server.listen(6400, () => {
 server.on("error", (err) => {
   console.error(`Server error: ${err.message}`);
 });
+
+function convertStringToByteArray(input: string): Uint8Array {
+  // Replace all newline characters with the character for byte 13 (carriage return)
+  const modifiedString = input.replace(/\n/g, '\r');
+
+  // Use TextEncoder to convert the modified string to a Uint8Array (byte array)
+  const encoder = new TextEncoder();
+  const byteArray = encoder.encode(modifiedString);
+
+  return byteArray;
+}
