@@ -1,4 +1,4 @@
-import net from "net";
+import net, { Socket } from "net";
 import axios, { AxiosRequestConfig } from "axios";
 import { TextProcessor } from "./TextProcessor";
 let llmResponseText = ""
@@ -9,7 +9,11 @@ const clients = new Map();
 // Function to generate a unique ID for each client
 const getClientId = (socket) => `${socket.remoteAddress}:${socket.remotePort}`;
 
+let textProcessor = new TextProcessor(24, 40)
+
 let userInput = "";
+
+let selectedMode: 0 | 1 | 2 = 0
 
 // Create a TCP server
 const server = net.createServer((socket) => {
@@ -22,10 +26,12 @@ const server = net.createServer((socket) => {
   socket.write(initialByte);
 
   // Send greeting message to the new client
-  socket.write("hELLO cLIENT");
+  socket.write("welcome to llama");
 
   socket.write(Buffer.from([13, 13]))
 
+  socket.write("1 = petscii, 40 chars/line, echo on\r")
+  socket.write("2 = ascii, 80 chars/line, echo off\r\r")
   // Handle incoming data from clients
   socket.on("data", (data) => {
     console.log(`Data from ${clientId}: ${data}`);
@@ -39,18 +45,38 @@ const server = net.createServer((socket) => {
         )} - Value ${data[i]})`
       );
 
-      //  socket.write(`writing...`)
+      // Echo
+      (selectedMode === 1) && writeToClient(socket, selectedMode, data.toString())
 
-      if (data[i] !== 13) {
-        try {
-          userInput += data.toString("ascii", i, i + 1);
-        } catch { }
-      } else {
-        console.log(`${userInput}`);
+      if (selectedMode === 0) {
+        if (data.toString() === "1") {
+          selectedMode = 1
+        }
+        if (data.toString() === "2") {
+          selectedMode = 2
+          textProcessor = new TextProcessor(25, 80)
+        }
+        if (selectedMode) {
+          commandToClient(socket, selectedMode, "CLR")
+          writeToClient(socket, selectedMode, `Mode ${selectedMode} selected.`)
+          commandToClient(socket, selectedMode, "CR", 2)
+          writeToClient(socket, selectedMode, `Enter your prompt`)
+          commandToClient(socket, selectedMode, "CR", 2)
+        }
+      }
 
-        callLLM(userInput, socket);
+      if (selectedMode) {
+        if (data[i] !== 13) {
+          try {
+            userInput += data.toString("ascii", i, i + 1);
+          } catch { }
+        } else {
+          console.log(`${userInput}`);
 
-        userInput = "";
+          callLLM(userInput, socket);
+
+          userInput = "";
+        }
       }
     }
   });
@@ -69,6 +95,11 @@ const server = net.createServer((socket) => {
 });
 
 async function callLLM(prompt = "", responseStream) {
+
+  // const model="llama2:latest"
+  // const model="llama2:13b"
+  const model = "mistral:latest"
+
   const options: AxiosRequestConfig = {
     method: "POST",
     url: "http://localhost:11434/api/generate",
@@ -104,14 +135,16 @@ async function callLLM(prompt = "", responseStream) {
 
             llmResponseText += deltaText
 
-            const textProcessor = new TextProcessor();
-            textProcessor.addText(llmResponseText);
+            //const textProcessor = new TextProcessor();
+            const formattedDelta = textProcessor.addText(deltaText);
 
-            if (textProcessor.pages.length === 1) {
-              responseStream.write(
-                convertStringToByteArray(textProcessor.flipCase(deltaText.toString()))
-              );
-            }
+            /* if (textProcessor.pages.length === 1) {
+               responseStream.write(
+                 convertStringToByteArray(textProcessor.flipCase(deltaText.toString()))
+               );
+             }*/
+
+            writeToClient(responseStream, selectedMode, formattedDelta)
           }
         } catch (e) {
           console.log(e);
@@ -125,8 +158,46 @@ async function callLLM(prompt = "", responseStream) {
     console.log(e);
   }
 
-
 }
+
+function writeToClient(socket: Socket, mode: 0 | 1 | 2, payload: string) {
+
+  if (mode === 1) {
+    const flipCase = textProcessor.flipCase(payload)
+
+    const newLinesReplaced = flipCase.replaceAll(/\\N/g, "\r")
+
+    socket.write(newLinesReplaced)
+  }
+  if (mode === 2) {
+    socket.write(payload)
+  }
+}
+
+function commandToClient(socket: Socket, mode: 1 | 2, command: "CLR" | "CR", count = 1) {
+
+  let byte = 0
+
+  if (mode === 1) {
+    switch (command) {
+      case "CLR":
+        byte = 147
+        break;
+      case "CR":
+        byte = 13
+        break;
+
+
+      default:
+        break;
+    }
+    for (let i = 0; i < count; i++) { socket.write(Buffer.from([byte])) }
+  }
+  if (mode === 2) {
+    //socket.write(payload)
+  }
+}
+
 
 // Listen on port 6400
 server.listen(6400, () => {
