@@ -26,37 +26,37 @@ describe("TextProcessor", () => {
   it("Should add text provided in multiple calls correctly", () => {
     const deltas: string[] = [];
 
-    deltas.push(textProcessor.addText("Text One"));
+    deltas.push(textProcessor.addText("Text One "));
     deltas.push(textProcessor.addText("Text Two\n"));
-    deltas.push(textProcessor.addText("Text Three\nText Four"));
+    deltas.push(textProcessor.addText("Text Three\nText Four "));
     deltas.push(textProcessor.addText("\n"));
-    deltas.push(textProcessor.addText("Text Five"));
+    deltas.push(textProcessor.addText("Text Five "));
     deltas.push(textProcessor.addText("\n\n"));
-    deltas.push(textProcessor.addText("Text Six"));
-    deltas.push(textProcessor.addText("Text Seven"));
+    deltas.push(textProcessor.addText("Text S"));
+    deltas.push(textProcessor.addText("ix Text Seven"));
 
     const pages = textProcessor.getPages();
 
     expect(pages.length).toBe(1);
 
     expect(pages[0]).toEqual([
-      "Text One Text Two",
-      "Text Three",
-      "Text Four",
-      "Text Five",
-      "",
+      "Text One Text Two\n",
+      "Text Three\n",
+      "Text Four \n",
+      "Text Five \n",
+      "\n",
       "Text Six Text Seven",
     ]);
 
     expect(deltas).toEqual([
-      "Text One",
-      " Text Two\n",
-      "Text Three\nText Four",
+      "Text One ",
+      "Text Two\n",
+      "Text Three\nText Four ",
       "\n",
-      "Text Five",
+      "Text Five ",
       "\n\n",
-      "Text Six",
-      " Text Seven",
+      "Text S",
+      "ix Text Seven",
     ]);
   });
 
