@@ -70,7 +70,7 @@ export class TextProcessor {
       while (word.length > this.maxCharsPerLine) {
         const splitWord = word.slice(0, this.maxCharsPerLine);
         word = word.slice(this.maxCharsPerLine);
-        splitWords.push(splitWord + "\n");
+        splitWords.push(splitWord);
       }
       splitWords.push(word);
     }
@@ -92,8 +92,9 @@ export class TextProcessor {
       // this._lastDelta += this._currentLine.length ? ` ${word}` : word;
       oldLine += word;
     } else {
-      oldLine += "\n";
+      oldLine = oldLine.trimEnd() + "\n";
       newLine = word;
+      lineOverflow = true;
     }
 
     return { oldLine, newLine, overflow: lineOverflow };
@@ -116,14 +117,19 @@ export class TextProcessor {
 
     let currentPage: string[] = [];
 
-    this.lines.forEach((line) => {
-      if (currentPage.length === this.maxLinesPerPage) {
-        pages.push(currentPage);
-        currentPage = [];
-      } else {
-        currentPage.push(line);
-      }
-    });
+    // this.lines.forEach((line) => {
+    //   if (currentPage.length === this.maxLinesPerPage) {
+    //     pages.push(currentPage);
+    //     currentPage = [];
+    //   } else {
+    //     currentPage.push(line);
+    //   }
+    // });
+
+    for (let i = 0; i < this.lines.length; i += this.maxLinesPerPage) {
+      currentPage = this.lines.slice(i, i + this.maxLinesPerPage);
+      currentPage.length === this.maxLinesPerPage && pages.push(currentPage);
+    }
 
     return { pages, currentPage };
   }
